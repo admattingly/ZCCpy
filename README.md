@@ -50,7 +50,7 @@ if rc == 0:
 
     # write the key token to the CKDS
     r=z.csnbkrw(key_token=token,key_label=r['key_label'])
-'''
+```
 The output from running this code on Linux should look something like this:
 ```
 (CSNBRNGL - Random Number Generate Long           ) rc=0, reason=0
