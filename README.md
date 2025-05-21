@@ -11,7 +11,60 @@ To use ZCCpy in your Python script, you must _import_ it.  For example:
 ```
 import zccpy as z
 ```
-To call a CCA verb consult the "CCA callable services" section, or to call a PKCS #11 verb consult the "PKCS #11 callable services" section of the "IBM z/OS Cryptographic Services ICSF Application Programmer's Guide" (see: https://www.ibm.com/docs/en/zos/3.1.0?topic=guide-cca-callable-services or https://www.ibm.com/docs/en/zos/3.1.0?topic=guide-pkcs-11-callable-services, or equivalent documentation for Linux) for a description of the parameters passed to each verb.  ZCCpy expects you to pass named arguments with the required inputs when you invoke the CCA function (using a lower case parameter name).  The function arguments must be named exactly as the parameters are named in the IBM documentation for the platform you are using (i.e. z/OS or Linux).  You do not need to specify arguments for optional input parameters or output-only parameters - ZCCpy automatically sets null values for these parameters and populates the returned Python dictionary with all the CCA verb's parameter values on return from calling each verb.
+On z/OS, to call a CCA verb, consult the [`CCA callable services`](https://www.ibm.com/docs/en/zos/3.1.0?topic=guide-cca-callable-services) section, or to call a PKCS #11 verb consult the [`PKCS #11 callable services`](https://www.ibm.com/docs/en/zos/3.1.0?topic=guide-pkcs-11-callable-services) section of the "IBM z/OS Cryptographic Services ICSF Application Programmer's Guide" for a description of the parameters passed to each verb.
+On Linux, to call a CCA verb, consult the [`CCA verbs`](https://www.ibm.com/docs/en/linux-on-systems?topic=82-cca-verbs) section of the "IBM Secure Key Solution with the Common Cryptographic Architecture Application Programmer's Guide".
+ZCCpy expects you to pass named arguments with the required inputs when you invoke the CCA function (using  lower case parameter names).  The function arguments must be named exactly as the parameters are named in the IBM documentation for the platform you are using (i.e. z/OS or Linux).  You do not need to specify arguments for optional input parameters or output-only parameters - ZCCpy automatically sets null values for these parameters and populates the returned Python dictionary with all the CCA verb's parameter values on return from calling each verb.
+
+When you call a verb using zccpy, a Python dictionary object is returned, containing every parameter of that verb.  Here is an example showing the use of CSNBRNGL (Random Number Generate Long) to generate an odd-parity 16-byte random value, which is then imported into a CCA token and stored in the CKDS:
+```
+import zccpy as z
+import sys
+
+# invoke CSNBRNGL and set Python variables for all the verbs parameters
+globals().update(z.csnbrngl(rule_array_count=1,rule_array='ODD',random_number_length=16))
+print(random_number.hex())
+
+# create a skeleton token
+r = z.csnbktb(key_type='CIPHER',rule_array=z.zcpack('DES INTERNAL DOUBLE NO-KEY KEY-PART'),rule_array_count=5)
+rc = r['return_code']
+if rc == 0:
+
+    # import the random_number as the key value
+    r=z.csnbkpi(rule_array=z.zcpack('FIRST KEYBUF16'),rule_array_count=2,key_part=random_number,key_identifier=r['key_token'])
+
+    # finalise the key token
+    r=z.csnbkpi(rule_array=z.zcpack('COMPLETE'),rule_array_count=1,key_identifier=r['key_identifier'])
+    token = r['key_identifier']
+    print(token.hex())
+
+    # compute key check value
+    r=z.csnbkyt(rule_array=z.zcpack('KEY-ENCD GENERATE ENC-ZERO'),rule_array_count=3,key_identifier=token)
+    # display the KCV
+    if sys.platform == 'zos':
+        print(r['verification_pattern'][:3].hex())
+    else:
+        print(r['value_2'][:3].hex())
+
+    # create a CKDS record to store the key (label might already exist, but we will overwrite if so)
+    r=z.csnbkrc(key_label='MY.TEST.CIPHER')
+
+    # write the key token to the CKDS
+    r=z.csnbkrw(key_token=token,key_label=r['key_label'])
+'''
+The output from running this code on Linux should look something like this:
+```
+(CSNBRNGL - Random Number Generate Long           ) rc=0, reason=0
+7adf7fb9ef31b30b79ad0e1923911532
+(CSNBKTB  - Key Token Build                       ) rc=0, reason=0
+(CSNBKPI  - Key Part Import                       ) rc=0, reason=0
+(CSNBKPI  - Key Part Import                       ) rc=0, reason=0
+010000000000c02010dff7568cb20d42d131facf682f9bc9814a38fcf1aa4840000371000341000000037100032100000000000000000000000000005151be8c
+(CSNBKYT  - Key Test                              ) rc=0, reason=0
+3200bc
+(CSNBKRC  - DES Key Record Create                 ) rc=8, reason=44
+    A record with a matching key label already exists in key storage.
+(CSNBKRW  - DES Key Record Write                  ) rc=0, reason=0
+```
 ### Getting Help
 The Python help function will provide a description of the CCA verb you are invoking.  For example:
 ```
